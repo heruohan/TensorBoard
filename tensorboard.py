@@ -169,8 +169,14 @@ cd D:\Users\hecongcong\AppData\Local\Continuum\anaconda3\envs\tensorflow\Scripts
 
 第三步：copy生成的网址，到浏览器中打开.
 '''            
-            
 
+'''
+NOTE:
+If you call this program more than one tims, that will produce a InvalidArgumentError.
+the one workaround is adding 'tf.reset_default_graph()' ahead.
+tf.reset_default_graph()函数的作用：每次运行可清空之前default graph 及Nodes.
+具体内容参考地址：https://stackoverflow.com/questions/35413618/tensorflow-placeholder-error-when-using-tf-merge-all-summaries。
+'''
 
 
 
