@@ -92,36 +92,36 @@ def main(unused_argv):
         global_step=tf.Variable(0,name='global_step',trainable=False)
         
     
-    ####定义神经网络模型:MLP.
-    hid_w=tf.Variable(tf.truncated_normal([IMAGE_PIXELS*IMAGE_PIXELS,FLAGS.hidden_units],\
+        ####定义神经网络模型:MLP.
+        hid_w=tf.Variable(tf.truncated_normal([IMAGE_PIXELS*IMAGE_PIXELS,FLAGS.hidden_units],\
                                  stddev=1.0/IMAGE_PIXELS),name='hid_w')
-    hid_b=tf.Variable(tf.zeros([FLAGS.hidden_units]),name='hid_b')
+        hid_b=tf.Variable(tf.zeros([FLAGS.hidden_units]),name='hid_b')
     
-    sm_w=tf.Variable(tf.truncated_normal([FLAGS.hidden_units,10],\
+        sm_w=tf.Variable(tf.truncated_normal([FLAGS.hidden_units,10],\
                         stddev=1.0/math.sqrt(FLAGS.hidden_units)),name='sm_w')
-    sm_b=tf.Variable(tf.zeros([10]),name='sm_b')
+        sm_b=tf.Variable(tf.zeros([10]),name='sm_b')
     
     
-    x=tf.placeholder(tf.float32,[None,IMAGE_PIXELS*IMAGE_PIXELS])
-    y_=tf.placeholder(tf.float32,[None,10])
+        x=tf.placeholder(tf.float32,[None,IMAGE_PIXELS*IMAGE_PIXELS])
+        y_=tf.placeholder(tf.float32,[None,10])
     
-    hid_lin=tf.nn.xw_plus_b(x,hid_w,hid_b)
-    hid=tf.nn.relu(hid_lin)  ###隐层经过激活函数后输出
+        hid_lin=tf.nn.xw_plus_b(x,hid_w,hid_b)
+        hid=tf.nn.relu(hid_lin)  ###隐层经过激活函数后输出
     
-    y=tf.nn.softmax(tf.nn.xw_plus_b(hid,sm_w,sm_b))
-    cross_entropy=-tf.reduce_sum(y_*tf.log(tf.clip_by_value(y,\
+        y=tf.nn.softmax(tf.nn.xw_plus_b(hid,sm_w,sm_b))
+        cross_entropy=-tf.reduce_sum(y_*tf.log(tf.clip_by_value(y,\
                                                 1e-10,1.0)))
     
-    ####定义优化器
-    opt=tf.train.AdamOptimizer(FLAGS.learning_rate)
+        ####定义优化器
+        opt=tf.train.AdamOptimizer(FLAGS.learning_rate)
     
     
-    ####
-    if(FLAGS.sync_replicas):
-        if(FLAGS.replicas_to_aggregate is None):
-            replicas_to_aggregate=num_workers
-        else:
-            replicas_to_aggregate=FLAGS.replicas_to_aggregate
+        ####
+        if(FLAGS.sync_replicas):
+            if(FLAGS.replicas_to_aggregate is None):
+                replicas_to_aggregate=num_workers
+            else:
+                replicas_to_aggregate=FLAGS.replicas_to_aggregate
         
         
         opt=tf.train.SyncReplicasOptimizer(opt,\
@@ -130,85 +130,85 @@ def main(unused_argv):
                     replica_id=FLAGS.task_index,\
                     name='mnist_sync_replicas')
         
-    train_step=opt.minimize(cross_entropy,global_step=global_step)
+        train_step=opt.minimize(cross_entropy,global_step=global_step)
     
-    #####
-    if(FLAGS.sync_replicas and is_chief):
-        chief_queue_runner=opt.get_chief_queue_runner()
-        init_tokens_op=opt.get_init_tokens_op()
-    
-    
-    ####生成本地的参数初始化操作init_op.
-    init_op=tf.global_variables_initializer()
-    train_dir=tempfile.mkdtemp()
-    sv=tf.train.Supervisor(is_chief=is_chief,\
-                           logdir=train_dir,\
-                           init_op=init_op,\
-                           recovery_wait_secs=1,\
-                           global_step=global_step)
+        #####
+        if(FLAGS.sync_replicas and is_chief):
+            chief_queue_runner=opt.get_chief_queue_runner()
+            init_tokens_op=opt.get_init_tokens_op()
     
     
-    ####设置Session的参数.
-    sess_config=tf.ConfigProto(allow_soft_placement=True,\
-                               log_device_placement=False,\
-                               device_filters=['/job:ps',\
-                                '/job:worker/task:%d' % FLAGS.task_index])
+        ####生成本地的参数初始化操作init_op.
+        init_op=tf.global_variables_initializer()
+        train_dir=tempfile.mkdtemp()
+        sv=tf.train.Supervisor(is_chief=is_chief,\
+                               logdir=train_dir,\
+                               init_op=init_op,\
+                               recovery_wait_secs=1,\
+                               global_step=global_step)
     
     
-    ####
-    if(is_chief):
-        print('Worker %d: Initializing session...' % FLAGS.task_index)
-    else:
-        print('Worker %d: Waiting for session to be initialized...' % \
+        ####设置Session的参数.
+        sess_config=tf.ConfigProto(allow_soft_placement=True,\
+                                   log_device_placement=False,\
+                                   device_filters=['/job:ps',\
+                                    '/job:worker/task:%d' % FLAGS.task_index])
+    
+    
+        ####
+        if(is_chief):
+            print('Worker %d: Initializing session...' % FLAGS.task_index)
+        else:
+            print('Worker %d: Waiting for session to be initialized...' % \
+                  FLAGS.task_index)
+    
+        sess=sv.prepare_or_wait_for_session(server.target,\
+                                            config=sess_config)
+    
+        print('Worker %d: Session initialization complete.' % \
               FLAGS.task_index)
     
-    sess=sv.prepare_or_wait_for_session(server.target,\
-                                        config=sess_config)
     
-    print('Worker %d: Session initialization complete.' % \
-          FLAGS.task_index)
-    
-    
-    ####
-    if(FLAGS.sync_replicas and is_chief):
-        print('Starting chief queue runner and running init_tokens_op')
-        sv.start_queue_runners(sess,[chief_queue_runner])
-        sess.run(init_tokens_op)
+        ####
+        if(FLAGS.sync_replicas and is_chief):
+            print('Starting chief queue runner and running init_tokens_op')
+            sv.start_queue_runners(sess,[chief_queue_runner])
+            sess.run(init_tokens_op)
     
     
-    ####进行训练过程.
-    time_begin=time.time()
-    print('Training begins @ %f' % time_begin)
+        ####进行训练过程.
+        time_begin=time.time()
+        print('Training begins @ %f' % time_begin)
     
     
-    local_step=0
-    while(True):
-        batch_xs,batch_ys=mnist.train.next_batch(FLAGS.batch_size)
-        train_feed={x:batch_xs,y_:batch_ys}
+        local_step=0
+        while(True):
+            batch_xs,batch_ys=mnist.train.next_batch(FLAGS.batch_size)
+            train_feed={x:batch_xs,y_:batch_ys}
         
         
-        _,step=sess.run([train_step,global_step],feed_dict=train_feed)
-        local_step+=1
+            _,step=sess.run([train_step,global_step],feed_dict=train_feed)
+            local_step+=1
         
         
-        now=time.time()
-        print('%f: Worker %d: training step %d done (global step: %d)' % \
-              (now,FLAGS.task_index,local_step,step))
+            now=time.time()
+            print('%f: Worker %d: training step %d done (global step: %d)' % \
+                  (now,FLAGS.task_index,local_step,step))
         
-        if(step>=FLAGS.train_steps):
-            break
+            if(step>=FLAGS.train_steps):
+                break
         
-        ####展示总训练时间，并在验证数据上计算预测结果的损失.
-        time_end=time.time()
-        print('Training ends @ %f' % time_end)
-        training_time=time_end-time_begin
-        print('Training elapsed time: %f s' % training_time)
+            ####展示总训练时间，并在验证数据上计算预测结果的损失.
+            time_end=time.time()
+            print('Training ends @ %f' % time_end)
+            training_time=time_end-time_begin
+            print('Training elapsed time: %f s' % training_time)
         
-        val_feed={x:mnist.validation.images,\
-                  y_:mnist.validation.labels}
-        val_xent=sess.run(cross_entropy,feed_dict=val_feed)
-        print('After %d training step(s), validation cross \
-              entropy=%g' % (FLAGS.train_steps,val_xent))
+            val_feed={x:mnist.validation.images,\
+                      y_:mnist.validation.labels}
+            val_xent=sess.run(cross_entropy,feed_dict=val_feed)
+            print('After %d training step(s), validation cross \
+                  entropy=%g' % (FLAGS.train_steps,val_xent))
         
         
     
